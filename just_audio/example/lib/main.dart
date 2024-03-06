@@ -9,7 +9,9 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_example/common.dart';
 import 'package:rxdart/rxdart.dart';
 
-void main() => runApp(const MyApp());
+late Uint8List byteRangeData;
+
+void main() => runApp(MyApp());
 
 class MyApp extends StatefulWidget {
   const MyApp({Key? key}) : super(key: key);
@@ -107,6 +109,41 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   );
                 },
               ),
+
+            ElevatedButton(
+              onPressed: ()  async { 
+                  ByteData res = await rootBundle.load('audio/nature.mp3');
+                  var player = AudioPlayer();  
+
+                  var dataBuffer = res.buffer.asUint8List();
+                  byteRangeData  = dataBuffer;
+
+                  int testId = 1;
+
+                  if (testId == 1)
+                  {
+                    // Test 1 - Original example mentioned in issue #1201
+                    await player.setAudioSource(AudioStreamSource(dataBuffer));
+                  }
+                  else if (testId == 2)
+                  {
+                    // Test 2 - #1201 Replication using TestStreamAudioSource from  just_audio/just_audio/test/just_audio_test.dart - Line 1740
+                    await player.setAudioSource(TestStreamAudioSource(tag: 'stream-test'));
+                  }
+                  else
+                  {
+                    // Test 3 - Looks like classes derived from StreamAudioSource has this issue
+                    var lockCachingAudioSource = LockCachingAudioSource(Uri.parse("https://firebasestorage.googleapis.com/v0/b/storage-8edc8.appspot.com/o/justaudio%2Fjust_audio_play_on_both_platforms.aac?alt=media&token=8f818fff-3adb-4e24-8ac6-cf9e52617eab"));
+                    await player.setAudioSource(lockCachingAudioSource);
+                  }
+                        
+                  await player.play();
+                  player.dispose();
+              },
+              child: const Text('Play Byte Stream'),
+            ),
+
+            const SizedBox(height: 100,),
             ],
           ),
         ),
@@ -203,6 +240,39 @@ class ControlButtons extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class AudioStreamSource extends StreamAudioSource {
+  final Uint8List _buffer;
+
+  AudioStreamSource(this._buffer) : super(tag: 'MyAudioSource');
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    // Returning the stream audio response with the parameters
+    return StreamAudioResponse(
+      sourceLength: _buffer.length,
+      contentLength: (end ?? _buffer.length) - (start ?? 0),
+      offset: start ?? 0,
+      stream: Stream.fromIterable([_buffer.sublist(start ?? 0, end)]),
+      contentType: 'audio/mpeg',
+    );
+  }
+}
+
+class TestStreamAudioSource extends StreamAudioSource {
+  TestStreamAudioSource({dynamic tag}) : super(tag: tag);
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    return StreamAudioResponse(
+      contentType: 'audio/mock',
+      stream: Stream.value(byteRangeData.sublist(start ?? 0, end)),
+      contentLength: (end ?? byteRangeData.length) - (start ?? 0),
+      offset: start ?? 0,
+      sourceLength: byteRangeData.length,
     );
   }
 }
